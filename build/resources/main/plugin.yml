@@ -1,0 +1,6 @@
+name: zakuzaku
+version: '1.0-SNAPSHOT'
+main: plugin.zakuzaku.Main
+api-version: '1.19'
+commands:
+  gameStart:

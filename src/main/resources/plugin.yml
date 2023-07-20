@@ -1,0 +1,6 @@
+name: zakuzaku
+version: '${version}'
+main: plugin.zakuzaku.Main
+api-version: '1.19'
+commands:
+  gameStart:
