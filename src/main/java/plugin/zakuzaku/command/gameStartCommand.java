@@ -2,8 +2,11 @@ package plugin.zakuzaku.command;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.SplittableRandom;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -11,22 +14,30 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 
-public class gameStartCommand implements CommandExecutor {
+public class gameStartCommand implements CommandExecutor, Listener {
 
   private Block playerBlock;
+  private Set<Material> allowedBlocks;
+
+  public gameStartCommand() {
+    allowedBlocks = new HashSet<>();
+    allowedBlocks.add(Material.STONE);
+    allowedBlocks.add(Material.DIAMOND_ORE);
+    allowedBlocks.add(Material.LAPIS_ORE);
+
+  }
 
   @Override
   public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
     if (sender instanceof Player player) {
       World world = player.getWorld();
       PlayerInventory inventory = player.getInventory();
-      inventory.setHelmet(new ItemStack(Material.DIAMOND_HELMET));
-      inventory.setChestplate(new ItemStack(Material.DIAMOND_CHESTPLATE));
-      inventory.setLeggings(new ItemStack(Material.DIAMOND_LEGGINGS));
-      inventory.setBoots(new ItemStack(Material.DIAMOND_BOOTS));
       inventory.setItemInMainHand(new ItemStack(Material.DIAMOND_PICKAXE));
 
       List<Material> blocksList = new ArrayList<>();
@@ -36,35 +47,56 @@ public class gameStartCommand implements CommandExecutor {
 
       int random = new SplittableRandom().nextInt(blocksList.size());
 
-      for (int i = 0; i < 66; i++) {
-        blocksList.add(Material.STONE);
-      }
       for (int i = 0; i < 3; i++) {
         blocksList.add(Material.DIAMOND_ORE);
       }
-      for (int i = 0; i < 3; i++) {
+      for (int i = 0; i < 120; i++) {
+        blocksList.add(Material.STONE);
+      }
+      for (int i = 0; i < 2; i++) {
         blocksList.add(Material.LAPIS_ORE);
       }
 
       Collections.shuffle(blocksList);
 
       int count = 0;
-      playerBlock = player.getLocation().subtract(10, 0, 0).getBlock();
+      Location playerLocation = player.getLocation();
+      int offsetX = 4;
+      int offsetY = 2;
+      int offsetZ = 4;
+      int distance = 2;
 
-      playerBlock = player.getLocation().getBlock();
-      for (int x = playerBlock.getX() - 6; x <= playerBlock.getX(); x++) {
-        for (int y = playerBlock.getY(); y < playerBlock.getY() + 3; y++) {
-          for (int z = playerBlock.getZ() - 6; z < playerBlock.getZ(); z++) {
-            if (count >= 72) {
-              break;
+      for (int x = playerLocation.getBlockX() - offsetX; x <= playerLocation.getBlockX() + offsetX;
+          x++) {
+        for (int y = playerLocation.getBlockY() - offsetY;
+            y <= playerLocation.getBlockY() + offsetY; y++) {
+          for (int z = playerLocation.getBlockZ() - offsetZ;
+              z <= playerLocation.getBlockZ() + offsetZ; z++) {
+
+            Location blockLocation = new Location(world, x, y, z);
+            if (blockLocation.distance(playerLocation) > distance) {
+              if (!blockLocation.getBlock().getType().isSolid()) {
+                if (count >= 125) {
+                  break;
+                }
+                Material blockType = blocksList.get(count);
+                world.getBlockAt(x, y, z).setType(blockType);
+                count++;
+              }
             }
-            Material blockType = blocksList.get(count);
-            world.getBlockAt(x, y, z).setType(blockType);
-            count++;
           }
         }
       }
+      return true;
     }
-    return true;
+    return false;
+  }
+
+  @EventHandler
+  public void onBlockBreak(BlockBreakEvent e) {
+    Material brokenBlockType = e.getBlock().getType();
+    if (!allowedBlocks.contains(brokenBlockType)) {
+      e.setCancelled(true);
+    }
   }
 }
