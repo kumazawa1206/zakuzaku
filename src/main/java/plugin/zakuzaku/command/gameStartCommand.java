@@ -40,20 +40,18 @@ public class gameStartCommand implements CommandExecutor, Listener {
       PlayerInventory inventory = player.getInventory();
       inventory.setItemInMainHand(new ItemStack(Material.DIAMOND_PICKAXE));
 
+      int stoneCount = 120;
+      int diamondCount = 2;
+      int lapisCount = 3;
       List<Material> blocksList = new ArrayList<>();
-      blocksList.add(Material.STONE);
-      blocksList.add(Material.DIAMOND_ORE);
-      blocksList.add(Material.LAPIS_ORE);
 
-      int random = new SplittableRandom().nextInt(blocksList.size());
-
-      for (int i = 0; i < 3; i++) {
-        blocksList.add(Material.DIAMOND_ORE);
-      }
-      for (int i = 0; i < 120; i++) {
+      for (int i = 0; i < stoneCount; i++) {
         blocksList.add(Material.STONE);
       }
-      for (int i = 0; i < 2; i++) {
+      for (int i = 0; i < diamondCount; i++) {
+        blocksList.add(Material.DIAMOND_ORE);
+      }
+      for (int i = 0; i < lapisCount; i++) {
         blocksList.add(Material.LAPIS_ORE);
       }
 
@@ -87,9 +85,14 @@ public class gameStartCommand implements CommandExecutor, Listener {
           }
         }
       }
-      return true;
     }
-    return false;
+    return true;
+  }
+
+  private Material getRandomBlockType() {
+    Material[] blockTypes = {Material.DIAMOND_ORE, Material.STONE, Material.LAPIS_ORE};
+    int random = new SplittableRandom().nextInt(blockTypes.length);
+    return blockTypes[random];
   }
 
   @EventHandler
