@@ -2,9 +2,8 @@ package plugin.zakuzaku.command;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
+import java.util.Objects;
 import java.util.SplittableRandom;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -20,49 +19,42 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 
-public class gameStartCommand implements CommandExecutor, Listener {
+public class GameStartCommand implements CommandExecutor, Listener {
 
   private Block playerBlock;
-  private Set<Material> allowedBlocks;
+  private List<Material> allowedBlocks;
+  private Player player;
+  private int score;
 
-  public gameStartCommand() {
-    allowedBlocks = new HashSet<>();
-    allowedBlocks.add(Material.STONE);
-    allowedBlocks.add(Material.DIAMOND_ORE);
-    allowedBlocks.add(Material.LAPIS_ORE);
-
+  public GameStartCommand() {
+    allowedBlocks = List.of(Material.REDSTONE, Material.BLACKSTONE,
+        Material.DIAMOND_ORE,
+        Material.LAPIS_ORE);
   }
 
   @Override
   public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
     if (sender instanceof Player player) {
+      this.player = player;
       World world = player.getWorld();
       PlayerInventory inventory = player.getInventory();
       inventory.setItemInMainHand(new ItemStack(Material.DIAMOND_PICKAXE));
 
-      int stoneCount = 120;
-      int diamondCount = 2;
-      int lapisCount = 3;
+      //Listに持たせたMaterialをランダムに並べる。
       List<Material> blocksList = new ArrayList<>();
-
-      for (int i = 0; i < stoneCount; i++) {
-        blocksList.add(Material.STONE);
-      }
-      for (int i = 0; i < diamondCount; i++) {
-        blocksList.add(Material.DIAMOND_ORE);
-      }
-      for (int i = 0; i < lapisCount; i++) {
-        blocksList.add(Material.LAPIS_ORE);
-      }
-
+      blocksList.addAll(Collections.nCopies(40, Material.STONE));
+      blocksList.addAll(Collections.nCopies(3, Material.DIAMOND_ORE));
+      blocksList.addAll(Collections.nCopies(40, Material.STONE));
+      blocksList.addAll(Collections.nCopies(3, Material.LAPIS_ORE));
+      blocksList.addAll(Collections.nCopies(40, Material.BLACKSTONE));
       Collections.shuffle(blocksList);
 
       int count = 0;
       Location playerLocation = player.getLocation();
       int offsetX = 4;
-      int offsetY = 2;
+      int offsetY = 3;
       int offsetZ = 4;
-      int distance = 2;
+      int distance = 3;
 
       for (int x = playerLocation.getBlockX() - offsetX; x <= playerLocation.getBlockX() + offsetX;
           x++) {
@@ -74,7 +66,7 @@ public class gameStartCommand implements CommandExecutor, Listener {
             Location blockLocation = new Location(world, x, y, z);
             if (blockLocation.distance(playerLocation) > distance) {
               if (!blockLocation.getBlock().getType().isSolid()) {
-                if (count >= 125) {
+                if (count >= 126) {
                   break;
                 }
                 Material blockType = blocksList.get(count);
@@ -97,9 +89,23 @@ public class gameStartCommand implements CommandExecutor, Listener {
 
   @EventHandler
   public void onBlockBreak(BlockBreakEvent e) {
+    Player player = e.getPlayer();
+    if (Objects.isNull(player)) {
+      return;
+    }
+    if (Objects.isNull(this.player)) {
+      return;
+    }
+
+    if (this.player.getName().equals(player.getName())) {
+      score += 10;
+      player.sendMessage("採掘しました！現在のスコアは" + score + "点です。");
+    }
     Material brokenBlockType = e.getBlock().getType();
     if (!allowedBlocks.contains(brokenBlockType)) {
       e.setCancelled(true);
     }
+
   }
 }
+
