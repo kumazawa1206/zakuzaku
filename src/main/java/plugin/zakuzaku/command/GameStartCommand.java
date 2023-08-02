@@ -56,7 +56,6 @@ public class GameStartCommand implements CommandExecutor, Listener {
       List<Material> blocksList = new ArrayList<>();
       blocksList.addAll(Collections.nCopies(40, Material.STONE));
       blocksList.addAll(Collections.nCopies(3, Material.DIAMOND_ORE));
-      blocksList.addAll(Collections.nCopies(40, Material.STONE));
       blocksList.addAll(Collections.nCopies(3, Material.LAPIS_ORE));
       blocksList.addAll(Collections.nCopies(40, Material.BLACKSTONE));
       Collections.shuffle(blocksList);
@@ -75,7 +74,7 @@ public class GameStartCommand implements CommandExecutor, Listener {
             Location blockLocation = new Location(world, x, y, z);
             if (blockLocation.distance(playerLocation) > 3) {
               if (!blockLocation.getBlock().getType().isSolid()) {
-                if (count >= 126) {
+                if (count >= 70) {
                   break;
                 }
                 Material blockType = blocksList.get(count);
@@ -98,20 +97,35 @@ public class GameStartCommand implements CommandExecutor, Listener {
       return;
     }
 
+    // ゲームが終了している場合は点数加算しない
+    PlayerScore nowPlayer = getPlayerScore(player);
+    if (nowPlayer.getGameTime() <= 0) {
+      return;
+    }
+
     for (PlayerScore playerScore : playerScoreList) {
       if (playerScore.getPlayerName().equals(player.getName())) {
         Material brokenBlockType = e.getBlock().getType();
         if (allowedBlocks.contains(brokenBlockType)) {
+
+          int point = switch (brokenBlockType) {
+            case STONE -> 10;
+            case BLACKSTONE -> 15;
+            case DIAMOND_ORE -> 100;
+            case LAPIS_ORE -> 90;
+            default -> 0;
+          };
+
           if (brokenBlockType == playerScore.getLastMinedBlock()) {
             playerScore.incrementConsecutiveBlocksMined();
             if (playerScore.getConsecutiveBlocksMined() >= 3) {
-              playerScore.setScore(playerScore.getScore() + 20); // 3回目以降は2倍の点数
+              playerScore.setScore(playerScore.getScore() + point * 2); // 3回目以降は2倍の点数
             } else {
-              playerScore.setScore(playerScore.getScore() + 10);
+              playerScore.setScore(playerScore.getScore() + point);
             }
           } else {
             playerScore.resetConsecutiveBlocksMined();
-            playerScore.setScore(playerScore.getScore() + 10);
+            playerScore.setScore(playerScore.getScore() + point);
           }
           playerScore.setLastMinedBlock(brokenBlockType);
           player.sendMessage("採掘しました！現在のスコアは" + playerScore.getScore() + "点です。");
