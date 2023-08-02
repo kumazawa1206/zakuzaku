@@ -100,10 +100,25 @@ public class GameStartCommand implements CommandExecutor, Listener {
 
     for (PlayerScore playerScore : playerScoreList) {
       if (playerScore.getPlayerName().equals(player.getName())) {
-        playerScore.setScore(playerScore.getScore() + 10);
-        player.sendMessage("採掘しました！現在のスコアは" + playerScore.getScore() + "点です。");
+        Material brokenBlockType = e.getBlock().getType();
+        if (allowedBlocks.contains(brokenBlockType)) {
+          if (brokenBlockType == playerScore.getLastMinedBlock()) {
+            playerScore.incrementConsecutiveBlocksMined();
+            if (playerScore.getConsecutiveBlocksMined() >= 3) {
+              playerScore.setScore(playerScore.getScore() + 20); // 3回目以降は2倍の点数
+            } else {
+              playerScore.setScore(playerScore.getScore() + 10);
+            }
+          } else {
+            playerScore.resetConsecutiveBlocksMined();
+            playerScore.setScore(playerScore.getScore() + 10);
+          }
+          playerScore.setLastMinedBlock(brokenBlockType);
+          player.sendMessage("採掘しました！現在のスコアは" + playerScore.getScore() + "点です。");
+        }
       }
     }
+
     //gameStart実行時に生成されたブロック以外は採掘できなくなる
     Material brokenBlockType = e.getBlock().getType();
     if (!allowedBlocks.contains(brokenBlockType)) {
