@@ -1,8 +1,12 @@
 package plugin.zakuzaku.data;
 
+import java.util.ArrayList;
+import java.util.List;
 import lombok.Getter;
 import lombok.Setter;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.plugin.Plugin;
 
 /**
  * ゲームを実行する際のスコア情報を扱うオブジェクト。 プレイヤー名、合計点数、日時などの情報を持つ。
@@ -16,6 +20,8 @@ public class PlayerScore {
   private int gameTime;
   private int consecutiveBlocksMined; // 連続して採掘したブロックの数
   private Material lastMinedBlock; //最後に採掘したブロックの種類を保存する変数
+  private Plugin main;
+  private List<Location> generatedBlocks = new ArrayList<>();
 
   public void incrementScore() {
     this.score++;
@@ -45,4 +51,5 @@ public class PlayerScore {
   public Material getLastMinedBlock() {
     return lastMinedBlock;
   }
+
 }
