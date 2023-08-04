@@ -31,7 +31,8 @@ public class GameStartCommand implements CommandExecutor, Listener {
     this.main = main;
     allowedBlocks.addAll(List.of(Material.STONE, Material.BLACKSTONE,
         Material.DIAMOND_ORE,
-        Material.LAPIS_ORE));
+        Material.LAPIS_ORE,
+        Material.IRON_ORE));
   }
 
   @Override
@@ -55,39 +56,15 @@ public class GameStartCommand implements CommandExecutor, Listener {
 
       //Listに持たせたMaterialの任意の数を指定。。
       List<Material> blocksList = new ArrayList<>();
-      blocksList.addAll(Collections.nCopies(40, Material.STONE));
-      blocksList.addAll(Collections.nCopies(3, Material.DIAMOND_ORE));
-      blocksList.addAll(Collections.nCopies(3, Material.LAPIS_ORE));
-      blocksList.addAll(Collections.nCopies(40, Material.BLACKSTONE));
+      blocksList.addAll(Collections.nCopies(30, Material.STONE));
+      blocksList.addAll(Collections.nCopies(2, Material.DIAMOND_ORE));
+      blocksList.addAll(Collections.nCopies(2, Material.LAPIS_ORE));
+      blocksList.addAll(Collections.nCopies(30, Material.BLACKSTONE));
+      blocksList.addAll(Collections.nCopies(30, Material.IRON_ORE));
       Collections.shuffle(blocksList);
 
       //ランダムに並べたMaterialの出現場所
-      int count = 0;
-      Location playerLocation = player.getLocation();
-      //ランダムに並べたMaterialの出現場所の座標
-      for (int x = playerLocation.getBlockX() - 4;
-          x <= playerLocation.getBlockX() + 4; x++) {
-        for (int y = playerLocation.getBlockY() - 3;
-            y <= playerLocation.getBlockY() + 3; y++) {
-          for (int z = playerLocation.getBlockZ() - 4;
-              z <= playerLocation.getBlockZ() + 4; z++) {
-
-            Location blockLocation = new Location(world, x, y, z);
-            if (blockLocation.distance(playerLocation) > 3) {
-              if (!blockLocation.getBlock().getType().isSolid()) {
-                if (count >= 80) {
-                  break;
-                }
-                Material blockType = blocksList.get(count);
-                world.getBlockAt(x, y, z).setType(blockType);
-                count++;
-                //生成したブロックの位置情報をリストに追加する
-                generatedBlocks.add(blockLocation);
-              }
-            }
-          }
-        }
-      }
+      generateRandomBlocks(player, world, blocksList);
       // ここでallowedBlocksリストを生成したブロックの種類のみにリセットする
       allowedBlocks.clear();
       allowedBlocks.addAll(blocksList);
@@ -109,49 +86,67 @@ public class GameStartCommand implements CommandExecutor, Listener {
       return;
     }
 
+    // allowedBlocks リストに含まれない場合は採掘をキャンセル
+    Material brokenBlockType = e.getBlock().getType();
+    if (!allowedBlocks.contains(brokenBlockType)) {
+      e.setCancelled(true);
+      return;
+    }
+
     // 壊れたブロックが生成されたブロックかどうかをチェックします
+    // コマンド実行時に生成されていないブロックのポイントを加算しない。
     Location blockLocation = e.getBlock().getLocation();
     if (!generatedBlocks.contains(blockLocation)) {
-      return; //コマンド実行時に生成されていないブロックのポイントを無視します
+      return;
     }
 
     for (PlayerScore playerScore : playerScoreList) {
       if (playerScore.getPlayerName().equals(player.getName())) {
-        Material brokenBlockType = e.getBlock().getType();
         if (allowedBlocks.contains(brokenBlockType)) {
-
-          int point = switch (brokenBlockType) {
-            case STONE -> 10;
-            case BLACKSTONE -> 15;
-            case DIAMOND_ORE -> 100;
-            case LAPIS_ORE -> 90;
-            default -> 0;
-          };
-
-          if (brokenBlockType == playerScore.getLastMinedBlock()) {
-            playerScore.incrementConsecutiveBlocksMined();
-            if (playerScore.getConsecutiveBlocksMined() >= 3) {
-              playerScore.setScore(playerScore.getScore() + point * 3); // 3回目以降は2倍の点数
-            } else {
-              playerScore.setScore(playerScore.getScore() + point);
-            }
-          } else {
-            playerScore.resetConsecutiveBlocksMined();
-            playerScore.setScore(playerScore.getScore() + point);
-          }
-          playerScore.setLastMinedBlock(brokenBlockType);
-          player.sendMessage("採掘しました！現在のスコアは" + playerScore.getScore() + "点です。");
+          playerBlockScore(player, playerScore, brokenBlockType);
         }
       }
     }
-
-    //gameStart実行時に生成されたブロック以外は採掘できなくなる
-    Material brokenBlockType = e.getBlock().getType();
-    if (!allowedBlocks.contains(brokenBlockType)) {
-      e.setCancelled(true);
-    }
   }
 
+
+  /**
+   * コマンドを実行し、ブロックを生成するためのメソッド
+   *
+   * @param player     コマンドを実行したプレイヤー
+   * @param world      コマンドを実行したプレイーのワールド情報
+   * @param blocksList allowedBlockリスト内に指定したブロック
+   */
+  private void generateRandomBlocks(Player player, World world, List<Material> blocksList) {
+    int count = 0;
+    Location playerLocation = player.getLocation();
+    //ランダムに並べたMaterialの出現場所の座標
+    for (int x = playerLocation.getBlockX() - 4;
+        x <= playerLocation.getBlockX() + 4; x++) {
+      for (int y = playerLocation.getBlockY() - 3;
+          y <= playerLocation.getBlockY() + 3; y++) {
+        for (int z = playerLocation.getBlockZ() - 4;
+            z <= playerLocation.getBlockZ() + 4; z++) {
+
+          Location blockLocation = new Location(world, x, y, z);
+          if (blockLocation.distance(playerLocation) > 3) {
+            if (!blockLocation.getBlock().getType().isSolid()) {
+              if (count >= 80) {
+                break;
+              }
+              Material blockType = blocksList.get(count);
+              if (allowedBlocks.contains(blockType)) { // allowedBlocks リストに含まれる場合のみ生成
+                world.getBlockAt(x, y, z).setType(blockType);
+                count++;
+                //生成したブロックの位置情報をリストに追加する
+                generatedBlocks.add(blockLocation);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 
   /**
    * 現在実行しているプレイヤーのスコア情報を取得している。
@@ -177,8 +172,8 @@ public class GameStartCommand implements CommandExecutor, Listener {
   /**
    * 新規のプレイヤー情報をリストに追加します。
    *
-   * @param player コマンドを実行したプレイヤー
-   * @return 新規プレイヤー
+   * @param player コマンドを実行したプレイヤー。
+   * @return 新規プレイヤー。
    */
   private PlayerScore addNewPlayer(Player player) {
     PlayerScore newPlayer = new PlayerScore();
@@ -188,7 +183,40 @@ public class GameStartCommand implements CommandExecutor, Listener {
   }
 
   /**
-   * 生成したブロック情報からブロックを削除する
+   * それぞれのブロックにscoreを設定した。 3回連続で同じブロックを採掘するとscoreが③倍になる。
+   *
+   * @param player          コマンドを実行したプレイヤー。
+   * @param playerScore     それぞれのブロックに設定したスコア。
+   * @param brokenBlockType 採掘したブロックの種類。
+   */
+  private static void playerBlockScore(Player player, PlayerScore playerScore,
+      Material brokenBlockType) {
+    int point = switch (brokenBlockType) {
+      case STONE -> 10;
+      case IRON_ORE -> 20;
+      case BLACKSTONE -> 15;
+      case DIAMOND_ORE -> 100;
+      case LAPIS_ORE -> 90;
+      default -> 0;
+    };
+
+    if (brokenBlockType == playerScore.getLastMinedBlock()) {
+      playerScore.incrementConsecutiveBlocksMined();
+      if (playerScore.getConsecutiveBlocksMined() >= 3) {
+        playerScore.setScore(playerScore.getScore() + point * 3); // 3回目以降は2倍の点数
+      } else {
+        playerScore.setScore(playerScore.getScore() + point);
+      }
+    } else {
+      playerScore.resetConsecutiveBlocksMined();
+      playerScore.setScore(playerScore.getScore() + point);
+    }
+    playerScore.setLastMinedBlock(brokenBlockType);
+    player.sendMessage("採掘しました！現在のスコアは" + playerScore.getScore() + "点です。");
+  }
+
+  /**
+   * 生成したブロック情報を取得しゲーム終了時に削除する。
    */
   private void removeGeneratedBlocks() {
     for (Location blockLocation : generatedBlocks) {
