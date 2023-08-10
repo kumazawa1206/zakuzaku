@@ -23,6 +23,11 @@ public class PlayerScore {
   private Plugin main;
   private List<Location> generatedBlocks = new ArrayList<>();
 
+  public PlayerScore(String playerName) {
+    this.playerName = playerName;
+  }
+
+
   public void incrementScore() {
     this.score++;
   }
