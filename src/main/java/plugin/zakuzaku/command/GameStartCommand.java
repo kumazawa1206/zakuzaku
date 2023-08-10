@@ -8,8 +8,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -20,12 +18,14 @@ import org.bukkit.inventory.PlayerInventory;
 import plugin.zakuzaku.Main;
 import plugin.zakuzaku.data.PlayerScore;
 
-public class GameStartCommand implements CommandExecutor, Listener {
+public class GameStartCommand extends BaseCommand implements Listener {
 
   private Main main;
   private List<PlayerScore> playerScoreList = new ArrayList<>();
   private List<Material> allowedBlocks = new ArrayList<>();
   private List<Location> generatedBlocks = new ArrayList<>();
+  private List<Material> blocksList;
+
 
   public GameStartCommand(Main main) {
     this.main = main;
@@ -36,40 +36,38 @@ public class GameStartCommand implements CommandExecutor, Listener {
   }
 
   @Override
-  public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-    if (sender instanceof Player player) {
-      PlayerScore nowPlayer = getPlayerScore(player);
-      nowPlayer.setGameTime(20);
-      World world = player.getWorld();
+  public boolean onExecutePlayerCommand(Player player) {
+    PlayerScore nowPlayer = getPlayerScore(player);
+    nowPlayer.setGameTime(40);
+    World world = player.getWorld();
 
-      PlayerInventory inventory = player.getInventory();
-      inventory.setItemInMainHand(new ItemStack(Material.DIAMOND_PICKAXE));
+    initPlayerStatus(player);
 
-      Bukkit.getScheduler().runTaskLater(main, () -> {
-        player.sendTitle("ゲームが終了しました!",
-            nowPlayer.getPlayerName() + "合計" + nowPlayer.getScore() + "点でした。",
-            0, 45, 0);
-        nowPlayer.setScore(0);
+    player.sendTitle("採掘ゲームスタート!", "", 10, 40, 10);
 
-        removeGeneratedBlocks();
-      }, 15 * 20);
+    Bukkit.getScheduler().runTaskLater(main, () -> {
+      player.sendTitle("お疲れさまでした!",
+          nowPlayer.getPlayerName() + "合計" + nowPlayer.getScore() + "点でした。",
+          0, 60, 0);
+      nowPlayer.setScore(0);
 
-      //Listに持たせたMaterialの任意の数を指定。。
-      List<Material> blocksList = new ArrayList<>();
-      blocksList.addAll(Collections.nCopies(30, Material.STONE));
-      blocksList.addAll(Collections.nCopies(2, Material.DIAMOND_ORE));
-      blocksList.addAll(Collections.nCopies(2, Material.LAPIS_ORE));
-      blocksList.addAll(Collections.nCopies(30, Material.BLACKSTONE));
-      blocksList.addAll(Collections.nCopies(30, Material.IRON_ORE));
-      Collections.shuffle(blocksList);
+      removeGeneratedBlocks();
+    }, 30 * 20);
 
-      //ランダムに並べたMaterialの出現場所
-      generateRandomBlocks(player, world, blocksList);
-      // ここでallowedBlocksリストを生成したブロックの種類のみにリセットする
-      allowedBlocks.clear();
-      allowedBlocks.addAll(blocksList);
-    }
+    List<Material> blocksList = getMaterials();
+
+    //ランダムに並べたMaterialの出現場所
+    generateRandomBlocks(player, world, blocksList);
+    // ここでallowedBlocksリストを生成したブロックの種類のみにリセットする
+    allowedBlocks.clear();
+    allowedBlocks.addAll(blocksList);
     return true;
+  }
+
+
+  @Override
+  public boolean onExecuteNPCCommand(CommandSender sender) {
+    return false;
   }
 
 
@@ -87,6 +85,7 @@ public class GameStartCommand implements CommandExecutor, Listener {
     }
 
     // allowedBlocks リストに含まれない場合は採掘をキャンセル
+    //元からワールドにあるものも含むとバグになる可能性もある
     Material brokenBlockType = e.getBlock().getType();
     if (!allowedBlocks.contains(brokenBlockType)) {
       e.setCancelled(true);
@@ -111,7 +110,19 @@ public class GameStartCommand implements CommandExecutor, Listener {
 
 
   /**
-   * コマンドを実行し、ブロックを生成するためのメソッド
+   * コマンドを実行したプレイヤーの初期状態を FoodLevelを20、Healthレベルを20、ダイヤモンドのピッケルを装備する。
+   *
+   * @param player コマンドを実行したプレイヤー
+   */
+  private static void initPlayerStatus(Player player) {
+    player.setFoodLevel(20);
+    player.setHealth(20);
+    PlayerInventory inventory = player.getInventory();
+    inventory.setItemInMainHand(new ItemStack(Material.DIAMOND_PICKAXE));
+  }
+
+  /**
+   * 生成するブロックの出現場所
    *
    * @param player     コマンドを実行したプレイヤー
    * @param world      コマンドを実行したプレイーのワールド情報
@@ -120,7 +131,7 @@ public class GameStartCommand implements CommandExecutor, Listener {
   private void generateRandomBlocks(Player player, World world, List<Material> blocksList) {
     int count = 0;
     Location playerLocation = player.getLocation();
-    //ランダムに並べたMaterialの出現場所の座標
+    //プレイヤーの周囲にランダムにブロックを出現させる座標
     for (int x = playerLocation.getBlockX() - 4;
         x <= playerLocation.getBlockX() + 4; x++) {
       for (int y = playerLocation.getBlockY() - 3;
@@ -129,8 +140,11 @@ public class GameStartCommand implements CommandExecutor, Listener {
             z <= playerLocation.getBlockZ() + 4; z++) {
 
           Location blockLocation = new Location(world, x, y, z);
+          //プレイヤーから一定距離以上離れた位置に生成
           if (blockLocation.distance(playerLocation) > 3) {
+            //空気ブロックの上にのみ生成
             if (!blockLocation.getBlock().getType().isSolid()) {
+              //生成ブロックの数が上限に達したら終了
               if (count >= 80) {
                 break;
               }
@@ -149,7 +163,7 @@ public class GameStartCommand implements CommandExecutor, Listener {
   }
 
   /**
-   * 現在実行しているプレイヤーのスコア情報を取得している。
+   * コマンド実行しているプレイヤーのスコア情報を取得している。
    *
    * @param player コマンドを実行したプレイヤー
    * @return 現在実行しているプレイヤーのスコア情報
@@ -183,7 +197,24 @@ public class GameStartCommand implements CommandExecutor, Listener {
   }
 
   /**
-   * それぞれのブロックにscoreを設定した。 3回連続で同じブロックを採掘するとscoreが③倍になる。
+   * 生成されるBlockのList
+   *
+   * @return Blockのscoreと生成される数
+   */
+  private static List<Material> getMaterials() {
+    //Listに持たせたMaterialの任意の数を指定。。
+    List<Material> blocksList = new ArrayList<>();
+    blocksList.addAll(Collections.nCopies(50, Material.STONE));
+    blocksList.addAll(Collections.nCopies(2, Material.DIAMOND_ORE));
+    blocksList.addAll(Collections.nCopies(2, Material.LAPIS_ORE));
+    blocksList.addAll(Collections.nCopies(20, Material.BLACKSTONE));
+    blocksList.addAll(Collections.nCopies(20, Material.IRON_ORE));
+    Collections.shuffle(blocksList);
+    return blocksList;
+  }
+
+  /**
+   * それぞれのブロックにscoreを設定した。
    *
    * @param player          コマンドを実行したプレイヤー。
    * @param playerScore     それぞれのブロックに設定したスコア。
@@ -192,14 +223,27 @@ public class GameStartCommand implements CommandExecutor, Listener {
   private static void playerBlockScore(Player player, PlayerScore playerScore,
       Material brokenBlockType) {
     int point = switch (brokenBlockType) {
-      case STONE -> 10;
+      case STONE -> 5;
       case IRON_ORE -> 20;
       case BLACKSTONE -> 15;
       case DIAMOND_ORE -> 100;
-      case LAPIS_ORE -> 90;
+      case LAPIS_ORE -> 75;
       default -> 0;
     };
+    upDatePlayerScore(player, playerScore, brokenBlockType, point);
+  }
 
+  /**
+   * 3回連続で同じブロックを採掘するとscoreが3倍になる。
+   *
+   * @param player          コマンド実行したプレイヤー
+   * @param playerScore     採掘したブロック毎のscore
+   * @param brokenBlockType Listに登録されているBlock
+   * @param point           同じブロックを３回連続で採掘すると４回目以降はscoreが３倍になる。
+   */
+  private static void upDatePlayerScore(Player player, PlayerScore playerScore,
+      Material brokenBlockType,
+      int point) {
     if (brokenBlockType == playerScore.getLastMinedBlock()) {
       playerScore.incrementConsecutiveBlocksMined();
       if (playerScore.getConsecutiveBlocksMined() >= 3) {
