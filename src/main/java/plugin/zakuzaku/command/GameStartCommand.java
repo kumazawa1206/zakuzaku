@@ -5,9 +5,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -23,6 +25,11 @@ import plugin.zakuzaku.data.PlayerScore;
  * 結果はプレイヤー名、点数、日時などで保存されます。
  */
 public class GameStartCommand extends BaseCommand implements Listener {
+
+  public static final String EASY = "easy";
+  public static final String NORMAL = "normal";
+  public static final String HARD = "hard";
+  public static final String NONE = "none";
 
   private Main main;
   private List<PlayerScore> playerScoreList = new ArrayList<>();
@@ -43,18 +50,42 @@ public class GameStartCommand extends BaseCommand implements Listener {
   }
 
   @Override
-  public boolean onExecutePlayerCommand(Player player) {
-    PlayerScore nowPlayer = getPlayerScore(player);
+  public boolean onExecutePlayerCommand(Player player, Command command, String label,
+      String[] args) {
+    String difficulty = getDifficulty(player, args);
+    if (difficulty.equals(NONE)) {
+      return false;
+    }
+
+    PlayerScore nowPlayerScore = getPlayerScore(player);
 
     initPlayerStatus(player);
 
-    gamePlay(player, nowPlayer);
+    gamePlay(player, nowPlayerScore, difficulty);
     return true;
+  }
+
+  /**
+   * 難易度をコマンド引数から取得
+   *
+   * @param player コマンド実行者
+   * @param args   コマンド引数
+   * @return 難易度
+   */
+  private String getDifficulty(Player player, String[] args) {
+    if (args.length == 1 && (EASY.equals(args[0]) || NORMAL.equals(args[0]) || HARD.equals(
+        args[0]))) {
+      return args[0];
+    }
+    player.sendMessage(
+        ChatColor.RED + "実行できません。コマンド引数の１つ目に難易度設定が必要です。[easy, normal, hard]");
+    return NONE;
   }
 
 
   @Override
-  public boolean onExecuteNPCCommand(CommandSender sender) {
+  public boolean onExecuteNPCCommand(CommandSender sender, Command command, String label,
+      String[] args) {
     return false;
   }
 
@@ -89,7 +120,9 @@ public class GameStartCommand extends BaseCommand implements Listener {
     for (PlayerScore playerScore : playerScoreList) {
       if (playerScore.getPlayerName().equals(player.getName())
           && allowedBlocks.contains(brokenBlockType)) {
-        playerBlockScore(player, playerScore, brokenBlockType);
+        int point = getBlockScore(brokenBlockType);
+
+        updatePlayerScore(player, brokenBlockType, playerScore, point);
       }
     }
   }
@@ -122,21 +155,22 @@ public class GameStartCommand extends BaseCommand implements Listener {
   /**
    * ゲームを実行します。
    *
-   * @param player    コマンドを実行したプレイヤー。
-   * @param nowPlayer プレイヤースコア情報
+   * @param player         コマンドを実行したプレイヤー。
+   * @param nowPlayerScore プレイヤースコア情報
+   * @param difficulty     難易度
    */
-  private void gamePlay(Player player, PlayerScore nowPlayer) {
+  private void gamePlay(Player player, PlayerScore nowPlayerScore, String difficulty) {
     player.sendTitle("採掘ゲームスタート!", "", 10, 40, 10);
     Bukkit.getScheduler().runTaskLater(main, () -> {
       player.sendTitle("お疲れさまでした!",
-          nowPlayer.getPlayerName() + "さんは合計" + nowPlayer.getScore() + "点でした。",
+          nowPlayerScore.getPlayerName() + "さんは合計" + nowPlayerScore.getScore() + "点でした。",
           0, 60, 0);
-      nowPlayer.setScore(0);
+      nowPlayerScore.setScore(0);
 
       removeGeneratedBlocks();
     }, GAME_TIME);
 
-    List<Material> blocksList = getMaterials();
+    List<Material> blocksList = getMaterials(difficulty);
 
     //ランダムに並べたMaterialの出現場所
     generateRandomBlocks(player, player.getWorld(), blocksList);
@@ -192,7 +226,7 @@ public class GameStartCommand extends BaseCommand implements Listener {
           boolean isAirBlock = !blockLocation.getBlock().getType().isSolid();
 
           if (distanceToPlayer > 3.0 && isAirBlock) {
-            if (count >= 80) {
+            if (count >= 100) {
               break;
             }
 
@@ -211,19 +245,60 @@ public class GameStartCommand extends BaseCommand implements Listener {
   /**
    * 生成されるBlockのList
    *
+   * @param difficulty 難易度
    * @return Blockのscoreと生成される数
    */
-  private static List<Material> getMaterials() {
-    //Listに持たせたMaterialの任意の数を指定。。
+  private static List<Material> getMaterials(String difficulty) {
+    //難易度毎でListに持たせたMaterialの任意の数を指定。
     List<Material> blocksList = new ArrayList<>();
-    blocksList.addAll(Collections.nCopies(50, Material.STONE));
-    blocksList.addAll(Collections.nCopies(2, Material.DIAMOND_ORE));
-    blocksList.addAll(Collections.nCopies(2, Material.LAPIS_ORE));
-    blocksList.addAll(Collections.nCopies(20, Material.BLACKSTONE));
-    blocksList.addAll(Collections.nCopies(20, Material.IRON_ORE));
-    Collections.shuffle(blocksList);
+    switch (difficulty) {
+      case EASY -> {
+        blocksList.addAll(Collections.nCopies(20, Material.STONE));
+        blocksList.addAll(Collections.nCopies(20, Material.DIAMOND_ORE));
+        blocksList.addAll(Collections.nCopies(20, Material.LAPIS_ORE));
+        blocksList.addAll(Collections.nCopies(20, Material.BLACKSTONE));
+        blocksList.addAll(Collections.nCopies(20, Material.IRON_ORE));
+        Collections.shuffle(blocksList);
+      }
+      case NORMAL -> {
+        blocksList.addAll(Collections.nCopies(25, Material.STONE));
+        blocksList.addAll(Collections.nCopies(10, Material.DIAMOND_ORE));
+        blocksList.addAll(Collections.nCopies(15, Material.LAPIS_ORE));
+        blocksList.addAll(Collections.nCopies(25, Material.BLACKSTONE));
+        blocksList.addAll(Collections.nCopies(25, Material.IRON_ORE));
+        Collections.shuffle(blocksList);
+      }
+      case HARD -> {
+        blocksList.addAll(Collections.nCopies(30, Material.STONE));
+        blocksList.addAll(Collections.nCopies(5, Material.DIAMOND_ORE));
+        blocksList.addAll(Collections.nCopies(5, Material.LAPIS_ORE));
+        blocksList.addAll(Collections.nCopies(30, Material.BLACKSTONE));
+        blocksList.addAll(Collections.nCopies(30, Material.IRON_ORE));
+        Collections.shuffle(blocksList);
+      }
+    }
+
     return blocksList;
   }
+
+  /**
+   * ブロックのスコア情報
+   *
+   * @param brokenBlockType 採掘するブロックの種類
+   * @return 採掘したブロックの点数
+   */
+  private static int getBlockScore(Material brokenBlockType) {
+    int point = switch (brokenBlockType) {
+      case STONE -> 5;
+      case IRON_ORE -> 20;
+      case BLACKSTONE -> 15;
+      case DIAMOND_ORE -> 100;
+      case LAPIS_ORE -> 75;
+      default -> 0;
+    };
+    return point;
+  }
+
 
   /**
    * 3回連続で同じブロックを採掘するとscoreが3倍になる。
@@ -233,8 +308,8 @@ public class GameStartCommand extends BaseCommand implements Listener {
    * @param brokenBlockType Listに登録されているBlock
    * @param point           同じブロックを３回連続で採掘すると４回目以降はscoreが３倍になる。
    */
-  private static void upDatePlayerScore(Player player, PlayerScore playerScore,
-      Material brokenBlockType,
+  private static void updatePlayerScore(Player player, Material brokenBlockType,
+      PlayerScore playerScore,
       int point) {
     if (brokenBlockType == playerScore.getLastMinedBlock()) {
       playerScore.incrementConsecutiveBlocksMined();
@@ -249,27 +324,6 @@ public class GameStartCommand extends BaseCommand implements Listener {
     }
     playerScore.setLastMinedBlock(brokenBlockType);
     player.sendMessage("採掘しました！現在のスコアは" + playerScore.getScore() + "点です。");
-  }
-
-
-  /**
-   * それぞれのブロックにscoreを設定した。
-   *
-   * @param player          コマンドを実行したプレイヤー。
-   * @param playerScore     それぞれのブロックに設定したスコア。
-   * @param brokenBlockType 採掘したブロックの種類。
-   */
-  private static void playerBlockScore(Player player, PlayerScore playerScore,
-      Material brokenBlockType) {
-    int point = switch (brokenBlockType) {
-      case STONE -> 5;
-      case IRON_ORE -> 20;
-      case BLACKSTONE -> 15;
-      case DIAMOND_ORE -> 100;
-      case LAPIS_ORE -> 75;
-      default -> 0;
-    };
-    upDatePlayerScore(player, playerScore, brokenBlockType, point);
   }
 
   /**
