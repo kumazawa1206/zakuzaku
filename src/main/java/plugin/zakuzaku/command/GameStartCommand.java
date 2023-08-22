@@ -203,6 +203,21 @@ public class GameStartCommand extends BaseCommand implements Listener {
           0, 60, 0);
       nowPlayerScore.setScore(0);
 
+      try (Connection con = DriverManager.getConnection(
+          "jdbc:mysql://localhost:3306/spigot_server",
+          "root",
+          "rootrootroot");
+          Statement statement = con.createStatement()) {
+
+        statement.executeUpdate(
+            "insert player_score(player_name, score, difficulty, registered_at)"
+                + "values('" + nowPlayerScore.getPlayerName() + "', " + nowPlayerScore.getScore()
+                + ", '" + difficulty + "', now());");
+
+      } catch (SQLException e) {
+        e.printStackTrace();
+      }
+
       removeGeneratedBlocks();
     }, GAME_TIME);
 
