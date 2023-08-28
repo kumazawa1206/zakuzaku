@@ -1,8 +1,8 @@
 package plugin.zakuzaku.command;
 
+import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDateTime;
@@ -11,6 +11,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import org.apache.ibatis.io.Resources;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -25,7 +29,9 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import plugin.zakuzaku.Main;
-import plugin.zakuzaku.data.PlayerScore;
+import plugin.zakuzaku.data.ExecutingPlayer;
+import plugin.zakuzaku.mapper.PlayerScoreMapper;
+import plugin.zakuzaku.mapper.data.PlayerScore;
 
 /**
  * 制限時間内にランダムで出現されるブロックを採掘して、スコアを獲得するゲームです、 ブロック毎にスコア・生成数が設定されていて、スコアが変動します。
@@ -40,15 +46,25 @@ public class GameStartCommand extends BaseCommand implements Listener {
   public static final String LIST = "list";
 
   private Main main;
-  private List<PlayerScore> playerScoreList = new ArrayList<>();
+  private List<ExecutingPlayer> executingPlayerList = new ArrayList<>();
   private List<Material> allowedBlocks = new ArrayList<>();
   private List<Location> generatedBlocks = new ArrayList<>();
+
+  private SqlSessionFactory sqlSessionFactory;
 
   public final int GAME_TIME = 30 * 20;
 
 
   public GameStartCommand(Main main) {
     this.main = main;
+
+    try {
+      InputStream inputStream = Resources.getResourceAsStream("mybatis-config.xml");
+      this.sqlSessionFactory = new SqlSessionFactoryBuilder().build(inputStream);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+
     allowedBlocks.addAll(List.of(
         Material.STONE,
         Material.BLACKSTONE,
@@ -61,29 +77,21 @@ public class GameStartCommand extends BaseCommand implements Listener {
   public boolean onExecutePlayerCommand(Player player, Command command, String label,
       String[] args) {
     if (args.length == 1 && LIST.equals(args[0])) {
+      try (SqlSession session = sqlSessionFactory.openSession()) {
+        PlayerScoreMapper mapper = session.getMapper(PlayerScoreMapper.class);
+        List<PlayerScore> playerScoreList = mapper.selectList();
 
-      try (Connection con = DriverManager.getConnection(
-          "jdbc:mysql://localhost:3306/spigot_server",
-          "root",
-          "rootrootroot");
-          Statement statement = con.createStatement();
-          ResultSet resultset = statement.executeQuery("select * from player_score;")) {
-
-        while (resultset.next()) {
-          int id = resultset.getInt("id");
-          String name = resultset.getString("player_name");
-          int score = resultset.getInt("score");
-          String difficulty = resultset.getString("difficulty");
-
-          DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyy-MM-dd HH:mm:ss");
-          LocalDateTime date = LocalDateTime.parse(resultset.getString("registered_at"), formatter);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyy-MM-dd HH:mm:ss");
+        for (PlayerScore playerScore : playerScoreList) {
+          LocalDateTime date = LocalDateTime.parse(playerScore.getRegisteredAt(), formatter);
 
           player.sendMessage(
-              id + " | " + name + " | " + score + " | " + difficulty + " | " + date.format(
-                  formatter));
+              playerScore.getId() + " | "
+                  + playerScore.getPlayerName() + " | "
+                  + playerScore.getScore() + " | "
+                  + playerScore.getDifficulty() + " | "
+                  + date.format(formatter));
         }
-      } catch (SQLException e) {
-        e.printStackTrace();
       }
       return false;
     }
@@ -93,11 +101,11 @@ public class GameStartCommand extends BaseCommand implements Listener {
       return false;
     }
 
-    PlayerScore nowPlayerScore = getPlayerScore(player);
+    ExecutingPlayer nowExecutingPlayer = getPlayerScore(player);
 
     initPlayerStatus(player);
 
-    gamePlay(player, nowPlayerScore, difficulty);
+    gamePlay(player, nowExecutingPlayer, difficulty);
     return true;
   }
 
@@ -129,12 +137,12 @@ public class GameStartCommand extends BaseCommand implements Listener {
   @EventHandler
   public void onBlockBreak(BlockBreakEvent e) {
     Player player = e.getPlayer();
-    if (Objects.isNull(player) || playerScoreList.isEmpty()) {
+    if (Objects.isNull(player) || executingPlayerList.isEmpty()) {
       return;
     }
 
     // ゲームが終了している場合は点数加算しない
-    PlayerScore nowPlayer = getPlayerScore(player);
+    ExecutingPlayer nowPlayer = getPlayerScore(player);
     if (nowPlayer.getGameTime() <= 0) {
       return;
     }
@@ -153,12 +161,12 @@ public class GameStartCommand extends BaseCommand implements Listener {
       return;
     }
 
-    for (PlayerScore playerScore : playerScoreList) {
-      if (playerScore.getPlayerName().equals(player.getName())
+    for (ExecutingPlayer executingPlayer : executingPlayerList) {
+      if (executingPlayer.getPlayerName().equals(player.getName())
           && allowedBlocks.contains(brokenBlockType)) {
         int point = getBlockScore(brokenBlockType);
 
-        updatePlayerScore(player, brokenBlockType, playerScore, point);
+        updatePlayerScore(player, brokenBlockType, executingPlayer, point);
       }
     }
   }
@@ -182,26 +190,26 @@ public class GameStartCommand extends BaseCommand implements Listener {
    * @param player コマンドを実行したプレイヤー。
    * @return 新規プレイヤー。
    */
-  private PlayerScore addNewPlayer(Player player) {
-    PlayerScore newPlayer = new PlayerScore(player.getName());
-    playerScoreList.add(newPlayer);
+  private ExecutingPlayer addNewPlayer(Player player) {
+    ExecutingPlayer newPlayer = new ExecutingPlayer(player.getName());
+    executingPlayerList.add(newPlayer);
     return newPlayer;
   }
 
   /**
    * ゲームを実行します。
    *
-   * @param player         コマンドを実行したプレイヤー。
-   * @param nowPlayerScore プレイヤースコア情報
-   * @param difficulty     難易度
+   * @param player             コマンドを実行したプレイヤー。
+   * @param nowExecutingPlayer プレイヤースコア情報
+   * @param difficulty         難易度
    */
-  private void gamePlay(Player player, PlayerScore nowPlayerScore, String difficulty) {
+  private void gamePlay(Player player, ExecutingPlayer nowExecutingPlayer, String difficulty) {
     player.sendTitle("採掘ゲームスタート!", "", 10, 40, 10);
     Bukkit.getScheduler().runTaskLater(main, () -> {
       player.sendTitle("お疲れさまでした!",
-          nowPlayerScore.getPlayerName() + "さんは合計" + nowPlayerScore.getScore() + "点でした。",
+          nowExecutingPlayer.getPlayerName() + "さんは合計" + nowExecutingPlayer.getScore() + "点でした。",
           0, 60, 0);
-      nowPlayerScore.setScore(0);
+      nowExecutingPlayer.setScore(0);
 
       try (Connection con = DriverManager.getConnection(
           "jdbc:mysql://localhost:3306/spigot_server",
@@ -211,7 +219,8 @@ public class GameStartCommand extends BaseCommand implements Listener {
 
         statement.executeUpdate(
             "insert player_score(player_name, score, difficulty, registered_at)"
-                + "values('" + nowPlayerScore.getPlayerName() + "', " + nowPlayerScore.getScore()
+                + "values('" + nowExecutingPlayer.getPlayerName() + "', "
+                + nowExecutingPlayer.getScore()
                 + ", '" + difficulty + "', now());");
 
       } catch (SQLException e) {
@@ -236,18 +245,18 @@ public class GameStartCommand extends BaseCommand implements Listener {
    * @param player コマンドを実行したプレイヤー
    * @return 現在実行しているプレイヤーのスコア情報
    */
-  private PlayerScore getPlayerScore(Player player) {
-    PlayerScore playerScore = new PlayerScore(player.getName());
-    if (playerScoreList.isEmpty()) {
-      playerScore = addNewPlayer(player);
+  private ExecutingPlayer getPlayerScore(Player player) {
+    ExecutingPlayer executingPlayer = new ExecutingPlayer(player.getName());
+    if (executingPlayerList.isEmpty()) {
+      executingPlayer = addNewPlayer(player);
     } else {
-      playerScore = playerScoreList.stream().findFirst().map(ps
+      executingPlayer = executingPlayerList.stream().findFirst().map(ps
           -> ps.getPlayerName().equals(player.getName())
           ? ps
-          : addNewPlayer(player)).orElse(playerScore);
+          : addNewPlayer(player)).orElse(executingPlayer);
     }
-    playerScore.setGameTime(GAME_TIME);
-    return playerScore;
+    executingPlayer.setGameTime(GAME_TIME);
+    return executingPlayer;
   }
 
 
@@ -355,26 +364,26 @@ public class GameStartCommand extends BaseCommand implements Listener {
    * 3回連続で同じブロックを採掘するとscoreが3倍になる。
    *
    * @param player          コマンド実行したプレイヤー
-   * @param playerScore     採掘したブロック毎のscore
+   * @param executingPlayer 採掘したブロック毎のscore
    * @param brokenBlockType Listに登録されているBlock
    * @param point           同じブロックを３回連続で採掘すると４回目以降はscoreが３倍になる。
    */
   private static void updatePlayerScore(Player player, Material brokenBlockType,
-      PlayerScore playerScore,
+      ExecutingPlayer executingPlayer,
       int point) {
-    if (brokenBlockType == playerScore.getLastMinedBlock()) {
-      playerScore.incrementConsecutiveBlocksMined();
-      if (playerScore.getConsecutiveBlocksMined() >= 3) {
-        playerScore.setScore(playerScore.getScore() + point * 3); // 3回目以降は2倍の点数
+    if (brokenBlockType == executingPlayer.getLastMinedBlock()) {
+      executingPlayer.incrementConsecutiveBlocksMined();
+      if (executingPlayer.getConsecutiveBlocksMined() >= 3) {
+        executingPlayer.setScore(executingPlayer.getScore() + point * 3); // 3回目以降は2倍の点数
       } else {
-        playerScore.setScore(playerScore.getScore() + point);
+        executingPlayer.setScore(executingPlayer.getScore() + point);
       }
     } else {
-      playerScore.resetConsecutiveBlocksMined();
-      playerScore.setScore(playerScore.getScore() + point);
+      executingPlayer.resetConsecutiveBlocksMined();
+      executingPlayer.setScore(executingPlayer.getScore() + point);
     }
-    playerScore.setLastMinedBlock(brokenBlockType);
-    player.sendMessage("採掘しました！現在のスコアは" + playerScore.getScore() + "点です。");
+    executingPlayer.setLastMinedBlock(brokenBlockType);
+    player.sendMessage("採掘しました！現在のスコアは" + executingPlayer.getScore() + "点です。");
   }
 
   /**
