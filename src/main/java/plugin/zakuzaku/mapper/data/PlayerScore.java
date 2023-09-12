@@ -1,5 +1,6 @@
 package plugin.zakuzaku.mapper.data;
 
+import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -17,7 +18,11 @@ public class PlayerScore {
   private String playerName;
   private int score;
   private String difficulty;
-  private String registeredAt;
+  private LocalDateTime registeredAt;
 
-
+  public PlayerScore(String playerName, int score, String difficulty) {
+    this.playerName = playerName;
+    this.score = score;
+    this.difficulty = difficulty;
+  }
 }

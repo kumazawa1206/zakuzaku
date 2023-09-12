@@ -1,11 +1,6 @@
 package plugin.zakuzaku.command;
 
 import java.io.InputStream;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -81,16 +76,14 @@ public class GameStartCommand extends BaseCommand implements Listener {
         PlayerScoreMapper mapper = session.getMapper(PlayerScoreMapper.class);
         List<PlayerScore> playerScoreList = mapper.selectList();
 
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyy-MM-dd HH:mm:ss");
         for (PlayerScore playerScore : playerScoreList) {
-          LocalDateTime date = LocalDateTime.parse(playerScore.getRegisteredAt(), formatter);
-
           player.sendMessage(
               playerScore.getId() + " | "
                   + playerScore.getPlayerName() + " | "
                   + playerScore.getScore() + " | "
                   + playerScore.getDifficulty() + " | "
-                  + date.format(formatter));
+                  + playerScore.getRegisteredAt()
+                  .format(DateTimeFormatter.ofPattern("yyy-MM-dd HH:mm:ss")));
         }
       }
       return false;
@@ -209,25 +202,16 @@ public class GameStartCommand extends BaseCommand implements Listener {
       player.sendTitle("お疲れさまでした!",
           nowExecutingPlayer.getPlayerName() + "さんは合計" + nowExecutingPlayer.getScore() + "点でした。",
           0, 60, 0);
-      nowExecutingPlayer.setScore(0);
 
-      try (Connection con = DriverManager.getConnection(
-          "jdbc:mysql://localhost:3306/spigot_server",
-          "root",
-          "rootrootroot");
-          Statement statement = con.createStatement()) {
-
-        statement.executeUpdate(
-            "insert player_score(player_name, score, difficulty, registered_at)"
-                + "values('" + nowExecutingPlayer.getPlayerName() + "', "
-                + nowExecutingPlayer.getScore()
-                + ", '" + difficulty + "', now());");
-
-      } catch (SQLException e) {
-        e.printStackTrace();
+      try (SqlSession session = sqlSessionFactory.openSession(true)) {
+        PlayerScoreMapper mapper = session.getMapper(PlayerScoreMapper.class);
+        mapper.insert(
+            new PlayerScore(nowExecutingPlayer.getPlayerName()
+                , nowExecutingPlayer.getScore()
+                , difficulty));
       }
-
       removeGeneratedBlocks();
+      nowExecutingPlayer.setScore(0);
     }, GAME_TIME);
 
     List<Material> blocksList = getMaterials(difficulty);
@@ -238,6 +222,7 @@ public class GameStartCommand extends BaseCommand implements Listener {
     allowedBlocks.clear();
     allowedBlocks.addAll(blocksList);
   }
+
 
   /**
    * コマンド実行しているプレイヤーのスコア情報を取得している。
