@@ -1,15 +1,10 @@
 package plugin.zakuzaku.command;
 
-import java.io.InputStream;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import org.apache.ibatis.io.Resources;
-import org.apache.ibatis.session.SqlSession;
-import org.apache.ibatis.session.SqlSessionFactory;
-import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -24,8 +19,8 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import plugin.zakuzaku.Main;
+import plugin.zakuzaku.PlayerScoreData;
 import plugin.zakuzaku.data.ExecutingPlayer;
-import plugin.zakuzaku.mapper.PlayerScoreMapper;
 import plugin.zakuzaku.mapper.data.PlayerScore;
 
 /**
@@ -40,25 +35,19 @@ public class GameStartCommand extends BaseCommand implements Listener {
   public static final String NONE = "none";
   public static final String LIST = "list";
 
-  private Main main;
-  private List<ExecutingPlayer> executingPlayerList = new ArrayList<>();
-  private List<Material> allowedBlocks = new ArrayList<>();
-  private List<Location> generatedBlocks = new ArrayList<>();
+  private final Main main;
+  private final PlayerScoreData playerScoreData = new PlayerScoreData();
 
-  private SqlSessionFactory sqlSessionFactory;
+  private final List<ExecutingPlayer> executingPlayerList = new ArrayList<>();
+  private final List<Material> allowedBlocks = new ArrayList<>();
+  private final List<Location> generatedBlocks = new ArrayList<>();
+
 
   public final int GAME_TIME = 30 * 20;
 
 
   public GameStartCommand(Main main) {
     this.main = main;
-
-    try {
-      InputStream inputStream = Resources.getResourceAsStream("mybatis-config.xml");
-      this.sqlSessionFactory = new SqlSessionFactoryBuilder().build(inputStream);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
 
     allowedBlocks.addAll(List.of(
         Material.STONE,
@@ -71,21 +60,9 @@ public class GameStartCommand extends BaseCommand implements Listener {
   @Override
   public boolean onExecutePlayerCommand(Player player, Command command, String label,
       String[] args) {
+    //最初の引数が『List』だったらスコアを一覧表示して処理を終了する。
     if (args.length == 1 && LIST.equals(args[0])) {
-      try (SqlSession session = sqlSessionFactory.openSession()) {
-        PlayerScoreMapper mapper = session.getMapper(PlayerScoreMapper.class);
-        List<PlayerScore> playerScoreList = mapper.selectList();
-
-        for (PlayerScore playerScore : playerScoreList) {
-          player.sendMessage(
-              playerScore.getId() + " | "
-                  + playerScore.getPlayerName() + " | "
-                  + playerScore.getScore() + " | "
-                  + playerScore.getDifficulty() + " | "
-                  + playerScore.getRegisteredAt()
-                  .format(DateTimeFormatter.ofPattern("yyy-MM-dd HH:mm:ss")));
-        }
-      }
+      sendPlayerScoreList(player);
       return false;
     }
 
@@ -100,6 +77,30 @@ public class GameStartCommand extends BaseCommand implements Listener {
 
     gamePlay(player, nowExecutingPlayer, difficulty);
     return true;
+  }
+
+  @Override
+  public boolean onExecuteNPCCommand(CommandSender sender, Command command, String label,
+      String[] args) {
+    return false;
+  }
+
+  /**
+   * 現在登録されているスコアの一覧をメッセージに送る。
+   *
+   * @param player プレイヤー
+   */
+  private void sendPlayerScoreList(Player player) {
+    List<PlayerScore> playerScoreList = playerScoreData.selectList();
+    for (PlayerScore playerScore : playerScoreList) {
+      player.sendMessage(
+          playerScore.getId() + " | "
+              + playerScore.getPlayerName() + " | "
+              + playerScore.getScore() + " | "
+              + playerScore.getDifficulty() + " | "
+              + playerScore.getRegisteredAt()
+              .format(DateTimeFormatter.ofPattern("yyy-MM-dd HH:mm:ss")));
+    }
   }
 
   /**
@@ -118,14 +119,6 @@ public class GameStartCommand extends BaseCommand implements Listener {
         ChatColor.RED + "実行できません。コマンド引数の１つ目に難易度設定が必要です。[easy, normal, hard]");
     return NONE;
   }
-
-
-  @Override
-  public boolean onExecuteNPCCommand(CommandSender sender, Command command, String label,
-      String[] args) {
-    return false;
-  }
-
 
   @EventHandler
   public void onBlockBreak(BlockBreakEvent e) {
@@ -199,18 +192,17 @@ public class GameStartCommand extends BaseCommand implements Listener {
   private void gamePlay(Player player, ExecutingPlayer nowExecutingPlayer, String difficulty) {
     player.sendTitle("採掘ゲームスタート!", "", 10, 40, 10);
     Bukkit.getScheduler().runTaskLater(main, () -> {
+
       player.sendTitle("お疲れさまでした!",
           nowExecutingPlayer.getPlayerName() + "さんは合計" + nowExecutingPlayer.getScore() + "点でした。",
           0, 60, 0);
 
-      try (SqlSession session = sqlSessionFactory.openSession(true)) {
-        PlayerScoreMapper mapper = session.getMapper(PlayerScoreMapper.class);
-        mapper.insert(
-            new PlayerScore(nowExecutingPlayer.getPlayerName()
-                , nowExecutingPlayer.getScore()
-                , difficulty));
-      }
       removeGeneratedBlocks();
+
+      playerScoreData.insert(new PlayerScore(nowExecutingPlayer.getPlayerName()
+          , nowExecutingPlayer.getScore()
+          , difficulty));
+
       nowExecutingPlayer.setScore(0);
     }, GAME_TIME);
 
